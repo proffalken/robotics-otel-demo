@@ -83,6 +83,15 @@ def test_simulator_sends_to_internal_collector(compose):
     assert "otel-collector" in sim["depends_on"]
 
 
+@pytest.mark.parametrize("signal", ["traces", "metrics", "logs"])
+def test_signal_specific_endpoints_cannot_bypass_the_collector(compose, signal):
+    # These take precedence over OTEL_EXPORTER_OTLP_ENDPOINT, so a stray value
+    # in .env would otherwise send that signal straight past the collector.
+    env = compose["services"]["fleet-sim"]["environment"]
+    var = f"OTEL_EXPORTER_OTLP_{signal.upper()}_ENDPOINT"
+    assert env[var] == f"http://otel-collector:4318/v1/{signal}"
+
+
 def test_collector_credentials_are_passed_through_from_env(compose):
     env = compose["services"]["otel-collector"]["environment"]
     for var in ("UPSTREAM_OTLP_ENDPOINT", "UPSTREAM_OTLP_AUTH_HEADER", "DASH0_DATASET"):

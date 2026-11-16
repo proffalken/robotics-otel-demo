@@ -4,7 +4,9 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-COMPOSE=(docker compose -p fleet-sim-smoke -f docker-compose.yml -f ci/docker-compose.smoke.yml)
+# Unique project per run, so leftovers from an interrupted run (and their
+# logs) can never satisfy this run's checks.
+COMPOSE=(docker compose -p "fleet-sim-smoke-$$-${RANDOM}" -f docker-compose.yml -f ci/docker-compose.smoke.yml)
 TIMEOUT="${SMOKE_TIMEOUT:-90}"
 
 # Compose requires this at interpolation time; the overlay replaces it.
@@ -24,7 +26,9 @@ trap cleanup EXIT
 
 deadline=$((SECONDS + TIMEOUT))
 for signal in Traces Metrics Logs; do
-  until "${COMPOSE[@]}" logs --no-color fake-upstream | grep -q "info[[:space:]]*${signal}"; do
+  until "${COMPOSE[@]}" logs --no-color fake-upstream | grep "info[[:space:]]*${signal}" >/dev/null; do
+    # (not grep -q: exiting early can SIGPIPE `compose logs` and, with
+    # pipefail, turn a match into a failure)
     if [ "$SECONDS" -ge "$deadline" ]; then
       echo "FAIL: fake backend received no ${signal} within ${TIMEOUT}s" >&2
       exit 1
