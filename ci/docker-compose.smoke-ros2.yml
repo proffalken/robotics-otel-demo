@@ -1,0 +1,8 @@
+# Overlay for the ros2ebpf smoke test, applied after docker-compose.yml,
+# ci/docker-compose.smoke.yml and docker-compose.ros2.yml. The fake backend
+# prints every data point so the test can check metric names and attributes.
+services:
+  fake-upstream:
+    command:
+      - --config=/etc/otelcol-contrib/config.yaml
+      - --set=exporters::debug::verbosity=detailed

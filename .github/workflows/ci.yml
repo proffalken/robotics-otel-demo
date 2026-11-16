@@ -43,6 +43,12 @@ jobs:
               -e UPSTREAM_OTLP_AUTH_HEADER="Bearer dummy" \
               "$COLLECTOR_IMAGE" validate --config=/etc/otelcol-contrib/config.yaml
           done
+      - name: otelcol-contrib validate (base + ros2ebpf overlay)
+        run: |
+          docker run --rm -v "$PWD/collector:/c:ro" \
+            -e UPSTREAM_OTLP_ENDPOINT=https://example.invalid \
+            -e UPSTREAM_OTLP_AUTH_HEADER="Bearer dummy" \
+            "$COLLECTOR_IMAGE" validate --config=/c/config.yaml --config=/c/ros2ebpf.yaml
 
   smoke:
     name: End-to-end smoke test
@@ -53,6 +59,25 @@ jobs:
         env:
           SMOKE_BUILD: "1"
         run: ci/smoke.sh
+
+  # Real ROS 2 Rolling nodes measured by ros2ebpf's eBPF uprobes. Needs a
+  # BTF kernel and privileged containers, which GitHub-hosted runners have.
+  # Not a prerequisite of the image job: ros2ebpf is an optional add-on built
+  # from upstream, and its breakage should not block publishing fleet-sim.
+  ros2ebpf-smoke:
+    name: ros2ebpf smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Host supports eBPF uprobes
+        run: |
+          uname -r
+          test -f /sys/kernel/btf/vmlinux
+          mount | grep -q ' /sys/fs/bpf '
+      - name: ROS 2 nodes -> ros2ebpfd -> collector -> authenticated backend
+        env:
+          SMOKE_BUILD: "1"
+        run: ci/smoke-ros2.sh
 
   image:
     name: Build image (push on main)

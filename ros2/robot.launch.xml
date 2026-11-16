@@ -1,0 +1,15 @@
+<!--
+  The ROS 2 side of one simulated robot, amr-01: every node runs in a single
+  container, as they would on one robot computer.
+  Topic /amr_01/chatter, service /amr_01/add_two_ints.
+-->
+<launch>
+  <group>
+    <push_ros_namespace namespace="amr_01"/>
+    <node pkg="demo_nodes_cpp" exec="talker"/>
+    <node pkg="demo_nodes_py" exec="listener"/>
+    <node pkg="demo_nodes_cpp" exec="add_two_ints_server"/>
+    <!-- The demo client makes one call and exits; respawn it once a second. -->
+    <node pkg="demo_nodes_cpp" exec="add_two_ints_client" respawn="true" respawn_delay="1.0"/>
+  </group>
+</launch>
