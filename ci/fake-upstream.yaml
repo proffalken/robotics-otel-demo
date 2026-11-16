@@ -1,0 +1,32 @@
+# Stand-in for an external OTLP backend, used only by the CI smoke test.
+# It rejects any request without "Authorization: Bearer ci-smoke-token",
+# so data only shows up here if the internal collector sent the auth header.
+
+extensions:
+  bearertokenauth:
+    token: ci-smoke-token
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+        auth:
+          authenticator: bearertokenauth
+
+exporters:
+  debug:
+    verbosity: basic
+
+service:
+  extensions: [bearertokenauth]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug]
+    metrics:
+      receivers: [otlp]
+      exporters: [debug]
+    logs:
+      receivers: [otlp]
+      exporters: [debug]
