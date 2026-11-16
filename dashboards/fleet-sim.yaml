@@ -1,0 +1,1035 @@
+{
+  "kind": "Dashboard",
+  "metadata": {
+    "name": "robot-fleet-simulator"
+  },
+  "spec": {
+    "display": {
+      "name": "Robot Fleet Simulator",
+      "description": "Fleet controller commands, failures and robot health from fleet-sim"
+    },
+    "duration": "30m",
+    "variables": [
+      {
+        "kind": "Dash0FilterVariable",
+        "spec": {
+          "name": "robot_id",
+          "attributeKey": "robot_id",
+          "operator": "is_any",
+          "values": [],
+          "dependsOn": [],
+          "capturingRegexp": "",
+          "display": {
+            "name": "Robot",
+            "description": "",
+            "hidden": false
+          }
+        }
+      },
+      {
+        "kind": "Dash0FilterVariable",
+        "spec": {
+          "name": "fleet_task_type",
+          "attributeKey": "fleet_task_type",
+          "operator": "is_any",
+          "values": [],
+          "dependsOn": [],
+          "capturingRegexp": "",
+          "display": {
+            "name": "Task type",
+            "description": "",
+            "hidden": false
+          }
+        }
+      }
+    ],
+    "panels": {
+      "commandsPerMin": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Commands / min",
+            "description": "Commands dispatched to robots per minute"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {
+              "calculation": "last-number",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 1,
+                "shortValues": true
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(rate({otel_metric_name = \"fleet.commands.sent\", otel_metric_type = \"sum\", $robot_id, $fleet_task_type}[$__range])) * 60",
+                    "seriesNameFormat": ""
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "failureRate": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Command failure rate",
+            "description": "Failed or timed-out commands as a share of commands sent"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {
+              "calculation": "last-number",
+              "format": {
+                "unit": "percent",
+                "decimalPlaces": 1,
+                "shortValues": true
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "100 * sum(increase({otel_metric_name = \"fleet.commands.failed\", otel_metric_type = \"sum\", $robot_id, $fleet_task_type}[$__range])) / sum(increase({otel_metric_name = \"fleet.commands.sent\", otel_metric_type = \"sum\", $robot_id, $fleet_task_type}[$__range]))",
+                    "seriesNameFormat": ""
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "taskP95": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Task duration p95",
+            "description": "95th percentile end-to-end task duration"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {
+              "calculation": "last-number",
+              "format": {
+                "unit": "seconds",
+                "decimalPlaces": 2,
+                "shortValues": true
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "histogram_quantile(0.95, sum by (le) (increase({otel_metric_name = \"fleet.task.duration\", otel_metric_type = \"histogram\", $fleet_task_type}[$__range])))",
+                    "seriesNameFormat": ""
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "robotsWorking": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Robots working",
+            "description": "Robots currently busy, charging or updating"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {
+              "calculation": "last-number",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 0,
+                "shortValues": true
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum({otel_metric_name = \"fleet.robots\", otel_metric_type = \"gauge\", robot_status =~ \"busy|charging|updating\"})",
+                    "seriesNameFormat": ""
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "robotsEstopped": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Robots e-stopped",
+            "description": "Robots halted by an emergency stop"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {
+              "calculation": "last-number",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 0,
+                "shortValues": true
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum({otel_metric_name = \"fleet.robots\", otel_metric_type = \"gauge\", robot_status = \"estopped\"})",
+                    "seriesNameFormat": ""
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "avgBattery": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Average battery",
+            "description": "Mean battery level across the fleet"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {
+              "calculation": "last-number",
+              "format": {
+                "unit": "percent",
+                "decimalPlaces": 0,
+                "shortValues": true
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "avg({otel_metric_name = \"robot.battery.level\", otel_metric_type = \"gauge\", $robot_id})",
+                    "seriesNameFormat": ""
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "commandsByTask": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Commands sent by task",
+            "description": "Commands dispatched per interval, by task type"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "mode": "list",
+                "position": "bottom",
+                "showLegend": true
+              },
+              "visual": {
+                "display": "bar",
+                "lineWidth": 1.5,
+                "areaOpacity": 0.0,
+                "connectNulls": true,
+                "pointRadius": 0,
+                "stack": "all",
+                "palette": {
+                  "mode": "categorical"
+                }
+              },
+              "yAxis": {
+                "show": true,
+                "min": 0,
+                "format": {
+                  "unit": "decimal",
+                  "decimalPlaces": 0,
+                  "shortValues": true
+                }
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum by (fleet_task_type) (increase({otel_metric_name = \"fleet.commands.sent\", otel_metric_type = \"sum\", $robot_id, $fleet_task_type}[$__rate_interval]))",
+                    "seriesNameFormat": "{{fleet_task_type}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "failuresByError": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Failures by error type",
+            "description": "Failed commands per interval, by error.type"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "mode": "list",
+                "position": "bottom",
+                "showLegend": true
+              },
+              "visual": {
+                "display": "bar",
+                "lineWidth": 1.5,
+                "areaOpacity": 0.0,
+                "connectNulls": true,
+                "pointRadius": 0,
+                "stack": "all",
+                "palette": {
+                  "mode": "categorical"
+                }
+              },
+              "yAxis": {
+                "show": true,
+                "min": 0,
+                "format": {
+                  "unit": "decimal",
+                  "decimalPlaces": 0,
+                  "shortValues": true
+                }
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum by (error_type) (increase({otel_metric_name = \"fleet.commands.failed\", otel_metric_type = \"sum\", $robot_id, $fleet_task_type}[$__rate_interval]))",
+                    "seriesNameFormat": "{{error_type}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "taskDurationByTask": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Task duration p95 by task",
+            "description": "95th percentile task duration as seen by the controller"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "mode": "list",
+                "position": "bottom",
+                "showLegend": true
+              },
+              "visual": {
+                "display": "line",
+                "lineWidth": 1.5,
+                "areaOpacity": 0.0,
+                "connectNulls": true,
+                "pointRadius": 0,
+                "stack": "none",
+                "palette": {
+                  "mode": "categorical"
+                }
+              },
+              "yAxis": {
+                "show": true,
+                "min": 0,
+                "format": {
+                  "unit": "seconds",
+                  "decimalPlaces": 2,
+                  "shortValues": true
+                }
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "histogram_quantile(0.95, sum by (le, fleet_task_type) (increase({otel_metric_name = \"fleet.task.duration\", otel_metric_type = \"histogram\", $fleet_task_type}[$__rate_interval])))",
+                    "seriesNameFormat": "{{fleet_task_type}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "commandLatency": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Command round-trip latency",
+            "description": "Network round trip between controller and robot"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "mode": "list",
+                "position": "bottom",
+                "showLegend": true
+              },
+              "visual": {
+                "display": "line",
+                "lineWidth": 1.5,
+                "areaOpacity": 0.0,
+                "connectNulls": true,
+                "pointRadius": 0,
+                "stack": "none",
+                "palette": {
+                  "mode": "categorical"
+                }
+              },
+              "yAxis": {
+                "show": true,
+                "min": 0,
+                "format": {
+                  "unit": "seconds",
+                  "decimalPlaces": 3,
+                  "shortValues": true
+                }
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "histogram_quantile(0.5, sum by (le) (increase({otel_metric_name = \"fleet.command.latency\", otel_metric_type = \"histogram\", $robot_id}[$__rate_interval])))",
+                    "seriesNameFormat": "p50"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "histogram_quantile(0.95, sum by (le) (increase({otel_metric_name = \"fleet.command.latency\", otel_metric_type = \"histogram\", $robot_id}[$__rate_interval])))",
+                    "seriesNameFormat": "p95"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "robotsByStatus": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Robots by status",
+            "description": "Number of robots in each status"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "mode": "list",
+                "position": "bottom",
+                "showLegend": true
+              },
+              "visual": {
+                "display": "line",
+                "lineWidth": 1.5,
+                "areaOpacity": 0.6,
+                "connectNulls": true,
+                "pointRadius": 0,
+                "stack": "all",
+                "palette": {
+                  "mode": "categorical"
+                }
+              },
+              "yAxis": {
+                "show": true,
+                "min": 0,
+                "format": {
+                  "unit": "decimal",
+                  "decimalPlaces": 0,
+                  "shortValues": true
+                }
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum by (robot_status) ({otel_metric_name = \"fleet.robots\", otel_metric_type = \"gauge\"})",
+                    "seriesNameFormat": "{{robot_status}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "queueDepth": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Task queue depth",
+            "description": "Tasks waiting to be scheduled"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "mode": "list",
+                "position": "bottom",
+                "showLegend": true
+              },
+              "visual": {
+                "display": "line",
+                "lineWidth": 1.5,
+                "areaOpacity": 0.2,
+                "connectNulls": true,
+                "pointRadius": 0,
+                "stack": "none",
+                "palette": {
+                  "mode": "categorical"
+                }
+              },
+              "yAxis": {
+                "show": true,
+                "min": 0,
+                "format": {
+                  "unit": "decimal",
+                  "decimalPlaces": 0,
+                  "shortValues": true
+                }
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "max({otel_metric_name = \"fleet.task.queue.depth\", otel_metric_type = \"gauge\"})",
+                    "seriesNameFormat": "queue"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "battery": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Battery level",
+            "description": "State of charge per robot"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "mode": "list",
+                "position": "bottom",
+                "showLegend": true
+              },
+              "visual": {
+                "display": "line",
+                "lineWidth": 1.5,
+                "areaOpacity": 0.0,
+                "connectNulls": true,
+                "pointRadius": 0,
+                "stack": "none",
+                "palette": {
+                  "mode": "categorical"
+                }
+              },
+              "yAxis": {
+                "show": true,
+                "min": 0,
+                "format": {
+                  "unit": "percent",
+                  "decimalPlaces": 0,
+                  "shortValues": true
+                }
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "max by (robot_id) ({otel_metric_name = \"robot.battery.level\", otel_metric_type = \"gauge\", $robot_id})",
+                    "seriesNameFormat": "{{robot_id}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "temperature": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "CPU temperature (°C)",
+            "description": "Onboard computer temperature per robot"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "mode": "list",
+                "position": "bottom",
+                "showLegend": true
+              },
+              "visual": {
+                "display": "line",
+                "lineWidth": 1.5,
+                "areaOpacity": 0.0,
+                "connectNulls": true,
+                "pointRadius": 0,
+                "stack": "none",
+                "palette": {
+                  "mode": "categorical"
+                }
+              },
+              "yAxis": {
+                "show": true,
+                "min": 0,
+                "format": {
+                  "unit": "decimal",
+                  "decimalPlaces": 1,
+                  "shortValues": true
+                }
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "max by (robot_id) ({otel_metric_name = \"robot.cpu.temperature\", otel_metric_type = \"gauge\", $robot_id})",
+                    "seriesNameFormat": "{{robot_id}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "distance": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Distance travelled (m)",
+            "description": "Metres driven per interval, per robot"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "mode": "list",
+                "position": "bottom",
+                "showLegend": true
+              },
+              "visual": {
+                "display": "bar",
+                "lineWidth": 1.5,
+                "areaOpacity": 0.0,
+                "connectNulls": true,
+                "pointRadius": 0,
+                "stack": "all",
+                "palette": {
+                  "mode": "categorical"
+                }
+              },
+              "yAxis": {
+                "show": true,
+                "min": 0,
+                "format": {
+                  "unit": "decimal",
+                  "decimalPlaces": 0,
+                  "shortValues": true
+                }
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum by (robot_id) (increase({otel_metric_name = \"robot.distance.travelled\", otel_metric_type = \"sum\", $robot_id}[$__rate_interval]))",
+                    "seriesNameFormat": "{{robot_id}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "stepDuration": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Step duration p95 by step",
+            "description": "95th percentile duration of each task step on the robot"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "mode": "list",
+                "position": "bottom",
+                "showLegend": true
+              },
+              "visual": {
+                "display": "line",
+                "lineWidth": 1.5,
+                "areaOpacity": 0.0,
+                "connectNulls": true,
+                "pointRadius": 0,
+                "stack": "none",
+                "palette": {
+                  "mode": "categorical"
+                }
+              },
+              "yAxis": {
+                "show": true,
+                "min": 0,
+                "format": {
+                  "unit": "seconds",
+                  "decimalPlaces": 2,
+                  "shortValues": true
+                }
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "histogram_quantile(0.95, sum by (le, robot_step) (increase({otel_metric_name = \"robot.step.duration\", otel_metric_type = \"histogram\", $robot_id, $fleet_task_type}[$__rate_interval])))",
+                    "seriesNameFormat": "{{robot_step}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "handledByRobot": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Commands handled by robot",
+            "description": "Commands executed per robot and outcome over the selected time range"
+          },
+          "plugin": {
+            "kind": "TimeSeriesTable",
+            "spec": {
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 0,
+                "shortValues": true
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum by (robot_id, outcome) (increase({otel_metric_name = \"robot.commands.handled\", otel_metric_type = \"sum\", $robot_id, $fleet_task_type}[$__range]))",
+                    "seriesNameFormat": "{{robot_id}} {{outcome}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "layouts": [
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "title": "Overview",
+            "collapse": {
+              "open": true
+            }
+          },
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 4,
+              "height": 4,
+              "content": {
+                "$ref": "#/spec/panels/commandsPerMin"
+              }
+            },
+            {
+              "x": 4,
+              "y": 0,
+              "width": 4,
+              "height": 4,
+              "content": {
+                "$ref": "#/spec/panels/failureRate"
+              }
+            },
+            {
+              "x": 8,
+              "y": 0,
+              "width": 4,
+              "height": 4,
+              "content": {
+                "$ref": "#/spec/panels/taskP95"
+              }
+            },
+            {
+              "x": 12,
+              "y": 0,
+              "width": 4,
+              "height": 4,
+              "content": {
+                "$ref": "#/spec/panels/robotsWorking"
+              }
+            },
+            {
+              "x": 16,
+              "y": 0,
+              "width": 4,
+              "height": 4,
+              "content": {
+                "$ref": "#/spec/panels/robotsEstopped"
+              }
+            },
+            {
+              "x": 20,
+              "y": 0,
+              "width": 4,
+              "height": 4,
+              "content": {
+                "$ref": "#/spec/panels/avgBattery"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "title": "Commands",
+            "collapse": {
+              "open": true
+            }
+          },
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/commandsByTask"
+              }
+            },
+            {
+              "x": 12,
+              "y": 0,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/failuresByError"
+              }
+            },
+            {
+              "x": 0,
+              "y": 8,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/taskDurationByTask"
+              }
+            },
+            {
+              "x": 12,
+              "y": 8,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/commandLatency"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "title": "Fleet state",
+            "collapse": {
+              "open": true
+            }
+          },
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 16,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/robotsByStatus"
+              }
+            },
+            {
+              "x": 16,
+              "y": 0,
+              "width": 8,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/queueDepth"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "title": "Robot health",
+            "collapse": {
+              "open": true
+            }
+          },
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/battery"
+              }
+            },
+            {
+              "x": 12,
+              "y": 0,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/temperature"
+              }
+            },
+            {
+              "x": 0,
+              "y": 8,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/distance"
+              }
+            },
+            {
+              "x": 12,
+              "y": 8,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/stepDuration"
+              }
+            },
+            {
+              "x": 0,
+              "y": 16,
+              "width": 24,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/handledByRobot"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

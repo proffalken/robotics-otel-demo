@@ -1,0 +1,47 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: robot-fleet-simulator
+spec:
+  groups:
+    - name: Robot Fleet
+      interval: 1m
+      rules:
+        # Span-based: Dash0 operations (one per task type) on each robot service.
+        # Fires when an operation fails >75% of the time with at least 4
+        # failures in 10 minutes. Healthy robots (~5-15% random failures)
+        # don't get near this; the simulator's incident robots fail 100%.
+        - alert: RobotOperationErrorRate
+          expr: |
+            (
+              sum by (service_name, dash0_operation_name) (increase({otel_metric_name="dash0.spans", service_namespace="robotics", dash0_operation_type="rpc", otel_span_status_code="ERROR"}[10m]))
+              /
+              sum by (service_name, dash0_operation_name) (increase({otel_metric_name="dash0.spans", service_namespace="robotics", dash0_operation_type="rpc"}[10m]))
+            ) > 0.75
+            and
+            sum by (service_name, dash0_operation_name) (increase({otel_metric_name="dash0.spans", service_namespace="robotics", dash0_operation_type="rpc", otel_span_status_code="ERROR"}[10m])) >= 4
+          for: 2m
+          keep_firing_for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "{{ $labels.service_name }}: {{ $labels.dash0_operation_name }} is failing"
+            description: "More than 75% of {{ $labels.dash0_operation_name }} calls on {{ $labels.service_name }} failed over the last 10 minutes."
+
+        # Metric-based: the robot's own robot.commands.handled counter.
+        - alert: RobotTaskFailureRate
+          expr: |
+            (
+              sum by (service_name, fleet_task_type) (increase({otel_metric_name="robot.commands.handled", service_namespace="robotics", outcome="failure"}[10m]))
+              /
+              sum by (service_name, fleet_task_type) (increase({otel_metric_name="robot.commands.handled", service_namespace="robotics"}[10m]))
+            ) > 0.75
+            and
+            sum by (service_name, fleet_task_type) (increase({otel_metric_name="robot.commands.handled", service_namespace="robotics", outcome="failure"}[10m])) >= 4
+          for: 2m
+          keep_firing_for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ $labels.service_name }}: {{ $labels.fleet_task_type }} tasks keep failing"
+            description: "The robot reported more than 75% of {{ $labels.fleet_task_type }} tasks as failed over the last 10 minutes."
