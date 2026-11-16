@@ -2,6 +2,10 @@ apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
   name: robot-fleet-simulator
+  # Makes `dash0 apply` upsert instead of duplicating: each alert gets the
+  # stable id robot-fleet-simulator--<slug of "<group> - <alert>">.
+  labels:
+    dash0.com/id: robot-fleet-simulator
 spec:
   groups:
     - name: Robot Fleet
@@ -45,3 +49,84 @@ spec:
           annotations:
             summary: "{{ $labels.service_name }}: {{ $labels.fleet_task_type }} tasks keep failing"
             description: "The robot reported more than 75% of {{ $labels.fleet_task_type }} tasks as failed over the last 10 minutes."
+
+    # ROS 2 middleware statistics from ros2ebpf (see collector/ros2ebpf.yaml).
+    # ros2ebpf removes a series when its endpoint goes away, so a dead
+    # subscriber or publisher shows up as a missing series, not a zero:
+    # the "or ... * 0" terms below turn a missing series into 0.
+    - name: ROS 2
+      interval: 1m
+      rules:
+        # Subscriptions take fewer than 80% of the messages published on a
+        # topic that had subscribers recently.
+        - alert: ROS2TopicDeliveryGap
+          expr: |
+            (
+              (
+                sum by (robot_id, topic) (rate({otel_metric_name="ros2_rmw_take_total", service_namespace="robotics"}[2m]))
+                or
+                sum by (robot_id, topic) (rate({otel_metric_name="ros2_rmw_publish_total", service_namespace="robotics"}[2m])) * 0
+              )
+              /
+              sum by (robot_id, topic) (rate({otel_metric_name="ros2_rmw_publish_total", service_namespace="robotics"}[2m]))
+            ) < 0.8
+            and on (robot_id, topic)
+            sum by (robot_id, topic) (increase({otel_metric_name="ros2_rmw_take_total", service_namespace="robotics"}[30m])) > 0
+          for: 1m
+          keep_firing_for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "{{ $labels.robot_id }}: messages on {{ $labels.topic }} are not being taken"
+            description: "Subscriptions on {{ $labels.topic }} took fewer than 80% of the messages published over the last 2 minutes. A subscriber has stopped, fallen behind, or lost DDS connectivity."
+
+        # A topic that was publishing in the last 30 minutes has stopped.
+        # /parameter_events and /rosout are event-driven (they publish only
+        # when a parameter changes or a node logs), so they are excluded.
+        - alert: ROS2TopicSilent
+          expr: |
+            sum by (robot_id, topic) (increase({otel_metric_name="ros2_rmw_publish_total", service_namespace="robotics", topic!~".*/(parameter_events|rosout)"}[30m])) > 0
+            unless on (robot_id, topic)
+            sum by (robot_id, topic) (rate({otel_metric_name="ros2_rmw_publish_total", service_namespace="robotics", topic!~".*/(parameter_events|rosout)"}[2m])) > 0
+          for: 1m
+          keep_firing_for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "{{ $labels.robot_id }}: {{ $labels.topic }} has stopped publishing"
+            description: "{{ $labels.topic }} published within the last 30 minutes but nothing in the last 2 minutes. The publishing node has stopped or stalled."
+
+        # A service server takes requests but answers fewer than half of them.
+        - alert: ROS2ServiceUnanswered
+          expr: |
+            (
+              (
+                sum by (robot_id, service) (rate({otel_metric_name="ros2_rmw_service_response_total", service_namespace="robotics", side="server"}[2m]))
+                or
+                sum by (robot_id, service) (rate({otel_metric_name="ros2_rmw_service_request_total", service_namespace="robotics", side="server"}[2m])) * 0
+              )
+              /
+              sum by (robot_id, service) (rate({otel_metric_name="ros2_rmw_service_request_total", service_namespace="robotics", side="server"}[2m]))
+            ) < 0.5
+          for: 2m
+          keep_firing_for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ $labels.robot_id }}: {{ $labels.service }} is not answering"
+            description: "The {{ $labels.service }} server sent responses for fewer than half of the requests it took over the last 2 minutes."
+
+        # ros2ebpf has fewer eBPF probe links than configured: some ROS 2
+        # calls are no longer counted, so the rules above may stay silent.
+        - alert: ROS2EbpfProbesDetached
+          expr: |
+            max by (robot_id, host) ({otel_metric_name="ros2ebpf_probes_attached", service_namespace="robotics"})
+            <
+            max by (robot_id, host) ({otel_metric_name="ros2ebpf_probes_configured", service_namespace="robotics"})
+          for: 5m
+          keep_firing_for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{ $labels.robot_id }}: ros2ebpf lost eBPF probes on {{ $labels.host }}"
+            description: "Fewer eBPF probe links are attached than configured on {{ $labels.host }}, so ROS 2 statistics from it are incomplete."

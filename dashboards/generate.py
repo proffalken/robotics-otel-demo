@@ -26,6 +26,20 @@ DISTANCE = m("robot.distance.travelled", "sum", ROBOT)
 HANDLED = m("robot.commands.handled", "sum", f"{ROBOT}, {TASK}")
 STEP_DUR = m("robot.step.duration", "histogram", f"{ROBOT}, {TASK}")
 
+# ROS 2 middleware statistics from ros2ebpf, scraped by the collector
+# (collector/ros2ebpf.yaml stamps service.namespace and robot.id on them).
+NS = 'service_namespace = "robotics"'
+ROS_PUB = m("ros2_rmw_publish_total", "sum", f"{NS}, {ROBOT}")
+ROS_TAKE = m("ros2_rmw_take_total", "sum", f"{NS}, {ROBOT}")
+ROS_REQ = m("ros2_rmw_service_request_total", "sum", f'{NS}, side = "server", {ROBOT}')
+ROS_RESP = m("ros2_rmw_service_response_total", "sum", f'{NS}, side = "server", {ROBOT}')
+ROS_PERIOD = m("ros2_rmw_publish_period_seconds", "histogram", f"{NS}, {ROBOT}")
+ROS_PROC = m("ros2_process_info", "gauge", f"{NS}, {ROBOT}")
+EBPF_ATTACHED = m("ros2ebpf_probes_attached", "gauge", NS)
+EBPF_CONFIGURED = m("ros2ebpf_probes_configured", "gauge", NS)
+EBPF_DROPPED = m("ros2ebpf_events_dropped_total", "sum", NS)
+EBPF_UNRESOLVED = m("ros2ebpf_unresolved_endpoints", "gauge", NS)
+
 
 def fmt(unit: str = "decimal", decimals: int = 0) -> dict:
     return {"unit": unit, "decimalPlaces": decimals, "shortValues": True}
@@ -171,6 +185,74 @@ panels = {
         "Commands handled by robot", "Commands executed per robot and outcome over the selected time range",
         f"sum by (robot_id, outcome) (increase({HANDLED}[$__range]))", "{{robot_id}} {{outcome}}",
     ),
+    # ROS 2 middleware (ros2ebpf)
+    "rosProcesses": stat(
+        "ROS 2 processes", "ROS 2 processes with publishers, subscriptions or services",
+        f"count({ROS_PROC})",
+    ),
+    "rosTopics": stat(
+        "Topics publishing", "Topics with at least one publish over the selected time range",
+        f"count(sum by (robot_id, topic) (rate({ROS_PUB}[$__range])) > 0)",
+    ),
+    "rosPublishRate": stat(
+        "Messages published / s", "rmw_publish calls per second across all topics",
+        f"sum(rate({ROS_PUB}[$__range]))", decimals=1,
+    ),
+    "rosDelivery": stat(
+        "Takes per publish", "Messages taken by subscriptions per message published; "
+        "100% means every message was taken once, more means several subscribers",
+        f"100 * (sum(rate({ROS_TAKE}[$__range])) or sum(rate({ROS_PUB}[$__range])) * 0)"
+        f" / sum(rate({ROS_PUB}[$__range]))", unit="percent",
+    ),
+    "rosPublishByTopic": timeseries(
+        "Publish rate by topic", "Messages published per second, per topic and publishing process",
+        [query(f"sum by (topic, comm) (rate({ROS_PUB}[$__rate_interval]))", "{{topic}} ({{comm}})")],
+        decimals=2,
+    ),
+    "rosTakeByTopic": timeseries(
+        "Take rate by topic", "Messages taken per second, per topic and subscribing process",
+        [query(f"sum by (topic, comm) (rate({ROS_TAKE}[$__rate_interval]))", "{{topic}} ({{comm}})")],
+        decimals=2,
+    ),
+    "rosServices": timeseries(
+        "Service requests vs responses", "Server side: requests taken and responses sent per second. "
+        "Responses falling behind requests means calls go unanswered",
+        [
+            query(f"sum by (service) (rate({ROS_REQ}[$__rate_interval]))", "{{service}} requests"),
+            query(f"sum by (service) (rate({ROS_RESP}[$__rate_interval]))", "{{service}} responses"),
+        ],
+        decimals=2,
+    ),
+    "rosJitter": timeseries(
+        "Publish interval p99 by topic", "99th percentile time between consecutive publishes: "
+        "spikes are jitter or stalls in the publishing node",
+        [query(f"histogram_quantile(0.99, sum by (le, topic) (increase({ROS_PERIOD}[$__rate_interval])))",
+               "{{topic}}")],
+        unit="seconds", decimals=3,
+    ),
+    "rosProcessTable": table(
+        "ROS 2 processes", "Processes seen by ros2ebpf, with their RMW, container and ROS_DOMAIN_ID",
+        f"max by (robot_id, comm, rmw, container, domain_id) ({ROS_PROC})",
+        "{{robot_id}} {{comm}} {{rmw}} domain {{domain_id}} {{container}}",
+    ),
+    # ros2ebpf health
+    "ebpfProbes": timeseries(
+        "Probes attached vs configured", "eBPF probe links per host; attached below configured "
+        "means some ROS 2 calls are not being counted",
+        [
+            query(f"max by (host) ({EBPF_ATTACHED})", "{{host}} attached"),
+            query(f"max by (host) ({EBPF_CONFIGURED})", "{{host}} configured"),
+        ],
+    ),
+    "ebpfDropped": timeseries(
+        "Events dropped", "Ring buffer overflows: affected processes stay unresolved until the next GC",
+        [query(f"sum by (host) (increase({EBPF_DROPPED}[$__rate_interval]))", "{{host}}")],
+        display="bar",
+    ),
+    "ebpfUnresolved": timeseries(
+        "Unresolved endpoints", "Endpoints skipped at scrape time because their process identity is pending",
+        [query(f"max by (host) ({EBPF_UNRESOLVED})", "{{host}}")],
+    ),
 }
 
 
@@ -200,6 +282,16 @@ layouts = [
         ("distance", 0, 8, 12, 8), ("stepDuration", 12, 8, 12, 8),
         ("handledByRobot", 0, 16, 24, 8),
     ]),
+    grid("ROS 2 middleware", [
+        ("rosProcesses", 0, 0, 6, 4), ("rosTopics", 6, 0, 6, 4),
+        ("rosPublishRate", 12, 0, 6, 4), ("rosDelivery", 18, 0, 6, 4),
+        ("rosPublishByTopic", 0, 4, 12, 8), ("rosTakeByTopic", 12, 4, 12, 8),
+        ("rosServices", 0, 12, 12, 8), ("rosJitter", 12, 12, 12, 8),
+        ("rosProcessTable", 0, 20, 24, 8),
+    ]),
+    grid("ros2ebpf health", [
+        ("ebpfProbes", 0, 0, 8, 8), ("ebpfDropped", 8, 0, 8, 8), ("ebpfUnresolved", 16, 0, 8, 8),
+    ]),
 ]
 
 
@@ -213,22 +305,32 @@ def filter_var(key: str, label: str) -> dict:
     }
 
 
-dashboard = {
-    "kind": "Dashboard",
-    "metadata": {"name": "robot-fleet-simulator"},
-    "spec": {
-        "display": {
-            "name": "Robot Fleet Simulator",
-            "description": "Fleet controller commands, failures and robot health from fleet-sim",
+def build() -> dict:
+    return {
+        "kind": "Dashboard",
+        # dash0Extensions.id makes `dash0 apply` update this dashboard in place
+        # instead of creating a new copy on every run.
+        "metadata": {"name": "robot-fleet-simulator", "dash0Extensions": {"id": "robot-fleet-simulator"}},
+        "spec": {
+            "display": {
+                "name": "Robot Fleet Simulator",
+                "description": "Fleet controller commands, failures and robot health from fleet-sim, "
+                "plus ROS 2 middleware statistics from ros2ebpf",
+            },
+            "duration": "30m",
+            "variables": [filter_var("robot_id", "Robot"), filter_var("fleet_task_type", "Task type")],
+            "panels": panels,
+            "layouts": layouts,
         },
-        "duration": "30m",
-        "variables": [filter_var("robot_id", "Robot"), filter_var("fleet_task_type", "Task type")],
-        "panels": panels,
-        "layouts": layouts,
-    },
-}
+    }
 
-out = Path(__file__).with_name("fleet-sim.yaml")
-# JSON is valid YAML, so no YAML dependency is needed.
-out.write_text(json.dumps(dashboard, indent=2, ensure_ascii=False) + "\n")
-print(f"wrote {out}")
+
+def main() -> None:
+    out = Path(__file__).with_name("fleet-sim.yaml")
+    # JSON is valid YAML, so no YAML dependency is needed.
+    out.write_text(json.dumps(build(), indent=2, ensure_ascii=False) + "\n")
+    print(f"wrote {out}")
+
+
+if __name__ == "__main__":
+    main()
