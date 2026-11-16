@@ -1,0 +1,22 @@
+# Overlay for the smoke test: points the internal collector at a local
+# fake backend that requires a bearer token.
+#   docker compose -f docker-compose.yml -f ci/docker-compose.smoke.yml up
+services:
+  fleet-sim:
+    environment:
+      FLEET_INTERVAL_MIN: "0.2"
+      FLEET_INTERVAL_MAX: "0.5"
+      OTEL_METRIC_EXPORT_INTERVAL: "2000"
+
+  otel-collector:
+    environment:
+      UPSTREAM_OTLP_ENDPOINT: http://fake-upstream:4318
+      UPSTREAM_OTLP_AUTH_HEADER: Bearer ci-smoke-token
+    depends_on:
+      - fake-upstream
+
+  fake-upstream:
+    image: otel/opentelemetry-collector-contrib:0.165.0
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./ci/fake-upstream.yaml:/etc/otelcol-contrib/config.yaml:ro

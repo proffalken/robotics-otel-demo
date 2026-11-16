@@ -1,9 +1,30 @@
 services:
   fleet-sim:
     build: .
+    image: ghcr.io/proffalken/robotics-otel-demo:${FLEET_SIM_TAG:-latest}
     restart: unless-stopped
     env_file:
       - path: .env
         required: false
     environment:
-      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4318}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      # Signal-specific endpoints win over the one above; pin them so a
+      # stray value in .env cannot bypass the collector.
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://otel-collector:4318/v1/traces
+      OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: http://otel-collector:4318/v1/metrics
+      OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: http://otel-collector:4318/v1/logs
+    depends_on:
+      - otel-collector
+
+  # Internal collector: reachable only on the Compose network (no published
+  # ports). Forwards everything to the external backend set in .env.
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.165.0
+    restart: unless-stopped
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./collector/config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    environment:
+      UPSTREAM_OTLP_ENDPOINT: ${UPSTREAM_OTLP_ENDPOINT:?set UPSTREAM_OTLP_ENDPOINT in .env}
+      UPSTREAM_OTLP_AUTH_HEADER: ${UPSTREAM_OTLP_AUTH_HEADER:-}
+      DASH0_DATASET: ${DASH0_DATASET:-default}

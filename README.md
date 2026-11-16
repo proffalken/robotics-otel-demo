@@ -10,14 +10,56 @@ metrics and logs, all exported over OTLP/HTTP to an OpenTelemetry Collector.
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 uv run fleet-sim
 ```
 
-or with Docker:
+or with Docker Compose, which also runs an internal OpenTelemetry Collector:
 
 ```bash
-cp .env.example .env   # adjust if needed
-docker compose up -d --build
+cp .env.example .env   # set the upstream endpoint and auth header
+docker compose up -d
 ```
 
 Stop with Ctrl+C / `docker compose down`; buffered telemetry is flushed on exit.
+
+Compose pulls the published image `ghcr.io/proffalken/robotics-otel-demo`
+(tag from `FLEET_SIM_TAG`, default `latest`); add `--build` to build locally.
+
+## Collector and backend auth
+
+```
+fleet-sim ──OTLP/HTTP──▶ otel-collector (internal) ──OTLP/HTTP + auth──▶ backend
+```
+
+The collector (`otel/opentelemetry-collector-contrib`, config in
+`collector/config.yaml`) publishes no ports, so only fleet-sim can reach it.
+It forwards traces, metrics and logs with a single `otlphttp` exporter that
+sends an `Authorization` header and a `Dash0-Dataset` header. It also prints
+a one-line summary of each batch (`docker compose logs otel-collector`).
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `UPSTREAM_OTLP_ENDPOINT` | *(required)* | Backend OTLP/HTTP base URL |
+| `UPSTREAM_OTLP_AUTH_HEADER` | empty | Full `Authorization` header value |
+| `DASH0_DATASET` | `default` | Value of the `Dash0-Dataset` header; other backends ignore it |
+
+**Dash0** uses a bearer token
+([docs](https://www.dash0.com/documentation/dash0/get-started/sending-data-to-dash0)):
+
+```bash
+UPSTREAM_OTLP_ENDPOINT=https://ingress.eu-west-1.aws.dash0.com
+UPSTREAM_OTLP_AUTH_HEADER=Bearer auth_xxxxxxxx
+DASH0_DATASET=default
+```
+
+**Grafana Cloud** uses HTTP Basic auth with your stack's instance ID and an
+access-policy token
+([docs](https://grafana.com/docs/grafana-cloud/send-data/otlp/send-data-otlp/)):
+
+```bash
+UPSTREAM_OTLP_ENDPOINT=https://otlp-gateway-prod-eu-west-2.grafana.net/otlp
+UPSTREAM_OTLP_AUTH_HEADER="Basic $(printf '%s' '<instance-id>:<token>' | base64 -w0)"
+```
+
+Put the computed value in `.env`; Compose does not run shell commands there.
+Use the endpoint region your provider shows for your account.
 
 ## Configuration
 
@@ -99,5 +141,17 @@ Fleet state and Robot health.
 ## Development
 
 ```bash
-uv run pytest
+uv run pytest                 # unit tests, including collector config checks
+SMOKE_BUILD=1 ci/smoke.sh     # end-to-end: fleet-sim -> collector -> fake backend
 ```
+
+The smoke test points the collector at a second collector
+(`ci/fake-upstream.yaml`) that rejects requests without the expected bearer
+token, and passes once that backend has received traces, metrics and logs.
+
+## CI
+
+`.github/workflows/ci.yml` runs on every pull request and on pushes to `main`:
+unit tests, `otelcol-contrib validate` on both collector configs, the smoke
+test, and an image build. Pushes to `main` also publish the image to
+`ghcr.io/proffalken/robotics-otel-demo` tagged `latest` and `sha-<short sha>`.
