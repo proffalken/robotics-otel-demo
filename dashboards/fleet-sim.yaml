@@ -1,12 +1,15 @@
 {
   "kind": "Dashboard",
   "metadata": {
-    "name": "robot-fleet-simulator"
+    "name": "robot-fleet-simulator",
+    "dash0Extensions": {
+      "id": "robot-fleet-simulator"
+    }
   },
   "spec": {
     "display": {
       "name": "Robot Fleet Simulator",
-      "description": "Fleet controller commands, failures and robot health from fleet-sim"
+      "description": "Fleet controller commands, failures and robot health from fleet-sim, plus ROS 2 middleware statistics from ros2ebpf"
     },
     "duration": "30m",
     "variables": [
@@ -822,6 +825,570 @@
             }
           ]
         }
+      },
+      "rosProcesses": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "ROS 2 processes",
+            "description": "ROS 2 processes with publishers, subscriptions or services"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {
+              "calculation": "last-number",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 0,
+                "shortValues": true
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "count({otel_metric_name = \"ros2_process_info\", otel_metric_type = \"gauge\", service_namespace = \"robotics\", $robot_id})",
+                    "seriesNameFormat": ""
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "rosTopics": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Topics publishing",
+            "description": "Topics with at least one publish over the selected time range"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {
+              "calculation": "last-number",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 0,
+                "shortValues": true
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "count(sum by (robot_id, topic) (rate({otel_metric_name = \"ros2_rmw_publish_total\", otel_metric_type = \"sum\", service_namespace = \"robotics\", $robot_id}[$__range])) > 0)",
+                    "seriesNameFormat": ""
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "rosPublishRate": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Messages published / s",
+            "description": "rmw_publish calls per second across all topics"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {
+              "calculation": "last-number",
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 1,
+                "shortValues": true
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum(rate({otel_metric_name = \"ros2_rmw_publish_total\", otel_metric_type = \"sum\", service_namespace = \"robotics\", $robot_id}[$__range]))",
+                    "seriesNameFormat": ""
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "rosDelivery": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Takes per publish",
+            "description": "Messages taken by subscriptions per message published; 100% means every message was taken once, more means several subscribers"
+          },
+          "plugin": {
+            "kind": "StatChart",
+            "spec": {
+              "calculation": "last-number",
+              "format": {
+                "unit": "percent",
+                "decimalPlaces": 0,
+                "shortValues": true
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "100 * sum(rate({otel_metric_name = \"ros2_rmw_take_total\", otel_metric_type = \"sum\", service_namespace = \"robotics\", $robot_id}[$__range])) / sum(rate({otel_metric_name = \"ros2_rmw_publish_total\", otel_metric_type = \"sum\", service_namespace = \"robotics\", $robot_id}[$__range]))",
+                    "seriesNameFormat": ""
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "rosPublishByTopic": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Publish rate by topic",
+            "description": "Messages published per second, per topic and publishing process"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "mode": "list",
+                "position": "bottom",
+                "showLegend": true
+              },
+              "visual": {
+                "display": "line",
+                "lineWidth": 1.5,
+                "areaOpacity": 0.0,
+                "connectNulls": true,
+                "pointRadius": 0,
+                "stack": "none",
+                "palette": {
+                  "mode": "categorical"
+                }
+              },
+              "yAxis": {
+                "show": true,
+                "min": 0,
+                "format": {
+                  "unit": "decimal",
+                  "decimalPlaces": 2,
+                  "shortValues": true
+                }
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum by (topic, comm) (rate({otel_metric_name = \"ros2_rmw_publish_total\", otel_metric_type = \"sum\", service_namespace = \"robotics\", $robot_id}[$__rate_interval]))",
+                    "seriesNameFormat": "{{topic}} ({{comm}})"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "rosTakeByTopic": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Take rate by topic",
+            "description": "Messages taken per second, per topic and subscribing process"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "mode": "list",
+                "position": "bottom",
+                "showLegend": true
+              },
+              "visual": {
+                "display": "line",
+                "lineWidth": 1.5,
+                "areaOpacity": 0.0,
+                "connectNulls": true,
+                "pointRadius": 0,
+                "stack": "none",
+                "palette": {
+                  "mode": "categorical"
+                }
+              },
+              "yAxis": {
+                "show": true,
+                "min": 0,
+                "format": {
+                  "unit": "decimal",
+                  "decimalPlaces": 2,
+                  "shortValues": true
+                }
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum by (topic, comm) (rate({otel_metric_name = \"ros2_rmw_take_total\", otel_metric_type = \"sum\", service_namespace = \"robotics\", $robot_id}[$__rate_interval]))",
+                    "seriesNameFormat": "{{topic}} ({{comm}})"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "rosServices": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Service requests vs responses",
+            "description": "Server side: requests taken and responses sent per second. Responses falling behind requests means calls go unanswered"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "mode": "list",
+                "position": "bottom",
+                "showLegend": true
+              },
+              "visual": {
+                "display": "line",
+                "lineWidth": 1.5,
+                "areaOpacity": 0.0,
+                "connectNulls": true,
+                "pointRadius": 0,
+                "stack": "none",
+                "palette": {
+                  "mode": "categorical"
+                }
+              },
+              "yAxis": {
+                "show": true,
+                "min": 0,
+                "format": {
+                  "unit": "decimal",
+                  "decimalPlaces": 2,
+                  "shortValues": true
+                }
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum by (service) (rate({otel_metric_name = \"ros2_rmw_service_request_total\", otel_metric_type = \"sum\", service_namespace = \"robotics\", side = \"server\", $robot_id}[$__rate_interval]))",
+                    "seriesNameFormat": "{{service}} requests"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum by (service) (rate({otel_metric_name = \"ros2_rmw_service_response_total\", otel_metric_type = \"sum\", service_namespace = \"robotics\", side = \"server\", $robot_id}[$__rate_interval]))",
+                    "seriesNameFormat": "{{service}} responses"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "rosJitter": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Publish interval p99 by topic",
+            "description": "99th percentile time between consecutive publishes: spikes are jitter or stalls in the publishing node"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "mode": "list",
+                "position": "bottom",
+                "showLegend": true
+              },
+              "visual": {
+                "display": "line",
+                "lineWidth": 1.5,
+                "areaOpacity": 0.0,
+                "connectNulls": true,
+                "pointRadius": 0,
+                "stack": "none",
+                "palette": {
+                  "mode": "categorical"
+                }
+              },
+              "yAxis": {
+                "show": true,
+                "min": 0,
+                "format": {
+                  "unit": "seconds",
+                  "decimalPlaces": 3,
+                  "shortValues": true
+                }
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "histogram_quantile(0.99, sum by (le, topic) (increase({otel_metric_name = \"ros2_rmw_publish_period_seconds\", otel_metric_type = \"histogram\", service_namespace = \"robotics\", $robot_id}[$__rate_interval])))",
+                    "seriesNameFormat": "{{topic}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "rosProcessTable": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "ROS 2 processes",
+            "description": "Processes seen by ros2ebpf, with their RMW, container and ROS_DOMAIN_ID"
+          },
+          "plugin": {
+            "kind": "TimeSeriesTable",
+            "spec": {
+              "format": {
+                "unit": "decimal",
+                "decimalPlaces": 0,
+                "shortValues": true
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "max by (robot_id, comm, rmw, container, domain_id) ({otel_metric_name = \"ros2_process_info\", otel_metric_type = \"gauge\", service_namespace = \"robotics\", $robot_id})",
+                    "seriesNameFormat": "{{robot_id}} {{comm}} {{rmw}} domain {{domain_id}} {{container}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "ebpfProbes": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Probes attached vs configured",
+            "description": "eBPF probe links per host; attached below configured means some ROS 2 calls are not being counted"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "mode": "list",
+                "position": "bottom",
+                "showLegend": true
+              },
+              "visual": {
+                "display": "line",
+                "lineWidth": 1.5,
+                "areaOpacity": 0.0,
+                "connectNulls": true,
+                "pointRadius": 0,
+                "stack": "none",
+                "palette": {
+                  "mode": "categorical"
+                }
+              },
+              "yAxis": {
+                "show": true,
+                "min": 0,
+                "format": {
+                  "unit": "decimal",
+                  "decimalPlaces": 0,
+                  "shortValues": true
+                }
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "max by (host) ({otel_metric_name = \"ros2ebpf_probes_attached\", otel_metric_type = \"gauge\", service_namespace = \"robotics\"})",
+                    "seriesNameFormat": "{{host}} attached"
+                  }
+                }
+              }
+            },
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "max by (host) ({otel_metric_name = \"ros2ebpf_probes_configured\", otel_metric_type = \"gauge\", service_namespace = \"robotics\"})",
+                    "seriesNameFormat": "{{host}} configured"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "ebpfDropped": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Events dropped",
+            "description": "Ring buffer overflows: affected processes stay unresolved until the next GC"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "mode": "list",
+                "position": "bottom",
+                "showLegend": true
+              },
+              "visual": {
+                "display": "bar",
+                "lineWidth": 1.5,
+                "areaOpacity": 0.0,
+                "connectNulls": true,
+                "pointRadius": 0,
+                "stack": "none",
+                "palette": {
+                  "mode": "categorical"
+                }
+              },
+              "yAxis": {
+                "show": true,
+                "min": 0,
+                "format": {
+                  "unit": "decimal",
+                  "decimalPlaces": 0,
+                  "shortValues": true
+                }
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "sum by (host) (increase({otel_metric_name = \"ros2ebpf_events_dropped_total\", otel_metric_type = \"sum\", service_namespace = \"robotics\"}[$__rate_interval]))",
+                    "seriesNameFormat": "{{host}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "ebpfUnresolved": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Unresolved endpoints",
+            "description": "Endpoints skipped at scrape time because their process identity is pending"
+          },
+          "plugin": {
+            "kind": "TimeSeriesChart",
+            "spec": {
+              "legend": {
+                "mode": "list",
+                "position": "bottom",
+                "showLegend": true
+              },
+              "visual": {
+                "display": "line",
+                "lineWidth": 1.5,
+                "areaOpacity": 0.0,
+                "connectNulls": true,
+                "pointRadius": 0,
+                "stack": "none",
+                "palette": {
+                  "mode": "categorical"
+                }
+              },
+              "yAxis": {
+                "show": true,
+                "min": 0,
+                "format": {
+                  "unit": "decimal",
+                  "decimalPlaces": 0,
+                  "shortValues": true
+                }
+              }
+            }
+          },
+          "queries": [
+            {
+              "kind": "TimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "PrometheusTimeSeriesQuery",
+                  "spec": {
+                    "query": "max by (host) ({otel_metric_name = \"ros2ebpf_unresolved_endpoints\", otel_metric_type = \"gauge\", service_namespace = \"robotics\"})",
+                    "seriesNameFormat": "{{host}}"
+                  }
+                }
+              }
+            }
+          ]
+        }
       }
     },
     "layouts": [
@@ -1025,6 +1592,140 @@
               "height": 8,
               "content": {
                 "$ref": "#/spec/panels/handledByRobot"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "title": "ROS 2 middleware",
+            "collapse": {
+              "open": true
+            }
+          },
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 6,
+              "height": 4,
+              "content": {
+                "$ref": "#/spec/panels/rosProcesses"
+              }
+            },
+            {
+              "x": 6,
+              "y": 0,
+              "width": 6,
+              "height": 4,
+              "content": {
+                "$ref": "#/spec/panels/rosTopics"
+              }
+            },
+            {
+              "x": 12,
+              "y": 0,
+              "width": 6,
+              "height": 4,
+              "content": {
+                "$ref": "#/spec/panels/rosPublishRate"
+              }
+            },
+            {
+              "x": 18,
+              "y": 0,
+              "width": 6,
+              "height": 4,
+              "content": {
+                "$ref": "#/spec/panels/rosDelivery"
+              }
+            },
+            {
+              "x": 0,
+              "y": 4,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/rosPublishByTopic"
+              }
+            },
+            {
+              "x": 12,
+              "y": 4,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/rosTakeByTopic"
+              }
+            },
+            {
+              "x": 0,
+              "y": 12,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/rosServices"
+              }
+            },
+            {
+              "x": 12,
+              "y": 12,
+              "width": 12,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/rosJitter"
+              }
+            },
+            {
+              "x": 0,
+              "y": 20,
+              "width": 24,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/rosProcessTable"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "title": "ros2ebpf health",
+            "collapse": {
+              "open": true
+            }
+          },
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 8,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/ebpfProbes"
+              }
+            },
+            {
+              "x": 8,
+              "y": 0,
+              "width": 8,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/ebpfDropped"
+              }
+            },
+            {
+              "x": 16,
+              "y": 0,
+              "width": 8,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/ebpfUnresolved"
               }
             }
           ]

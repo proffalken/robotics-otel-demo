@@ -178,11 +178,65 @@ generator, not the YAML) and applied with the [Dash0 CLI](https://www.dash0.com/
 
 ```bash
 uv run python dashboards/generate.py
-dash0 apply -f dashboards/fleet-sim.yaml
+dash0 apply --dataset <dataset> -f dashboards/fleet-sim.yaml -f checks/robot-alerts.yaml
 ```
 
-It has Robot and Task type filters and four sections: Overview, Commands,
-Fleet state and Robot health.
+The dashboard has Robot and Task type filters and six sections: Overview,
+Commands, Fleet state, Robot health, ROS 2 middleware (topics, publish and
+take rates, services, timer jitter, processes) and ros2ebpf health (probes,
+dropped events, unresolved endpoints). The last two stay empty unless the
+ros2ebpf stack is running.
+
+Both files carry a stable ID (`metadata.dash0Extensions.id` on the
+dashboard, the `dash0.com/id` label on the rules), so re-applying updates
+the existing assets instead of creating duplicates. Without `--dataset`,
+`dash0 apply` uses the profile's default dataset.
+
+`checks/robot-alerts.yaml` has two groups:
+
+| Group | Rule | Fires when |
+| --- | --- | --- |
+| Robot Fleet | `RobotOperationErrorRate` | over 75% of a robot's operation spans failed (≥ 4 failures in 10 minutes) |
+| Robot Fleet | `RobotTaskFailureRate` | over 75% of a robot's tasks of one type failed (≥ 4 in 10 minutes) |
+| ROS 2 | `ROS2TopicDeliveryGap` | subscriptions take under 80% of what is published on a topic |
+| ROS 2 | `ROS2TopicSilent` | a topic that published in the last 30 minutes has stopped |
+| ROS 2 | `ROS2ServiceUnanswered` | a service server answers under half of its requests |
+| ROS 2 | `ROS2EbpfProbesDetached` | ros2ebpf has fewer probes attached than configured |
+
+ros2ebpf removes a series when its endpoint disappears, so the ROS 2 rules
+treat a missing series as zero.
+
+## Breaking the demo on purpose
+
+`demo/break.sh` injects faults so the rules fire:
+
+```bash
+demo/break.sh ros2-subscriber-down  # kill the listener  -> ROS2TopicDeliveryGap
+demo/break.sh ros2-publisher-down   # kill the talker    -> ROS2TopicSilent
+demo/break.sh fleet-faults          # FLEET_FAULT_SCALE=5 -> RobotOperationErrorRate / RobotTaskFailureRate
+demo/break.sh restore               # put everything back
+```
+
+It runs against the ros2ebpf stack by default; set
+`COMPOSE_FILES="-f docker-compose.yml"` for fleet-sim alone.
+
+## Agent0 automations
+
+`agent0/automations/` holds three [Agent0](https://www.dash0.com/docs/dash0/agent0)
+automations. Automations have no `dash0` CLI or API support yet, so each
+file lists the settings and the prompt to enter in **Agent0 → Automations**
+by hand:
+
+- `robot-incident-triage.md`: on a failed Robot Fleet or ROS 2 check, works
+  out whether the cause is the application, the ROS 2 middleware or the
+  observability pipeline.
+- `daily-fleet-briefing.md`: a weekday 08:00 UTC summary of the last 24 hours.
+- `telemetry-pr-review.md`: on a pull request, checks that the metrics and
+  attributes used by changed dashboards, rules and instrumentation exist in
+  Dash0. It never posts to GitHub.
+
+All three use no network access, no notifications (results stay in the run
+history) and a 250 credit/week budget.
 
 ## Development
 
