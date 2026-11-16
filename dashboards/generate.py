@@ -201,7 +201,8 @@ panels = {
     "rosDelivery": stat(
         "Takes per publish", "Messages taken by subscriptions per message published; "
         "100% means every message was taken once, more means several subscribers",
-        f"100 * sum(rate({ROS_TAKE}[$__range])) / sum(rate({ROS_PUB}[$__range]))", unit="percent",
+        f"100 * (sum(rate({ROS_TAKE}[$__range])) or sum(rate({ROS_PUB}[$__range])) * 0)"
+        f" / sum(rate({ROS_PUB}[$__range]))", unit="percent",
     ),
     "rosPublishByTopic": timeseries(
         "Publish rate by topic", "Messages published per second, per topic and publishing process",

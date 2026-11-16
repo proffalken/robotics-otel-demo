@@ -106,3 +106,10 @@ def test_committed_yaml_matches_the_generator(dashboard):
 
 def test_dashboard_has_a_stable_id_so_apply_updates_instead_of_duplicating(dashboard):
     assert dashboard["metadata"]["dash0Extensions"]["id"] == "robot-fleet-simulator"
+
+
+def test_takes_per_publish_falls_back_to_zero_when_nothing_takes(dashboard):
+    # With the listener gone for longer than the range, the take series is
+    # absent; the tile must show 0%, not "no data".
+    (q,) = queries(dashboard["spec"]["panels"]["rosDelivery"])
+    assert re.search(r"\bor\b.*rmw_publish_total.*\* 0", q), q

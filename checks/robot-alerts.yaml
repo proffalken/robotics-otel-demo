@@ -81,11 +81,13 @@ spec:
             description: "Subscriptions on {{ $labels.topic }} took fewer than 80% of the messages published over the last 2 minutes. A subscriber has stopped, fallen behind, or lost DDS connectivity."
 
         # A topic that was publishing in the last 30 minutes has stopped.
+        # /parameter_events and /rosout are event-driven (they publish only
+        # when a parameter changes or a node logs), so they are excluded.
         - alert: ROS2TopicSilent
           expr: |
-            sum by (robot_id, topic) (increase({otel_metric_name="ros2_rmw_publish_total", service_namespace="robotics"}[30m])) > 0
+            sum by (robot_id, topic) (increase({otel_metric_name="ros2_rmw_publish_total", service_namespace="robotics", topic!~".*/(parameter_events|rosout)"}[30m])) > 0
             unless on (robot_id, topic)
-            sum by (robot_id, topic) (rate({otel_metric_name="ros2_rmw_publish_total", service_namespace="robotics"}[2m])) > 0
+            sum by (robot_id, topic) (rate({otel_metric_name="ros2_rmw_publish_total", service_namespace="robotics", topic!~".*/(parameter_events|rosout)"}[2m])) > 0
           for: 1m
           keep_firing_for: 5m
           labels:

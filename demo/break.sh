@@ -54,9 +54,14 @@ case "${1:-}" in
     echo "RobotOperationErrorRate / RobotTaskFailureRate should fire within ~12 minutes."
     ;;
   restore)
-    "${COMPOSE[@]}" restart ros2-robot 2>/dev/null || true
-    FLEET_FAULT_SCALE="${FLEET_FAULT_SCALE_DEFAULT:-1.0}" "${COMPOSE[@]}" up -d --no-deps fleet-sim
-    echo "restored: ros2-robot restarted, fleet-sim back to normal fault rates."
+    # Skip ros2-robot when the selected Compose files don't include it, but
+    # let a failed restart stop the script. fleet-sim gets its fault scale
+    # from .env or its Compose default again.
+    if "${COMPOSE[@]}" config --services | grep -x ros2-robot >/dev/null; then
+      "${COMPOSE[@]}" restart ros2-robot
+    fi
+    "${COMPOSE[@]}" up -d --no-deps fleet-sim
+    echo "restored: ros2-robot restarted (if present), fleet-sim back to its configured fault rates."
     ;;
   *) usage ;;
 esac

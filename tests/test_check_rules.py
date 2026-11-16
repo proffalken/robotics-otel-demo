@@ -65,3 +65,13 @@ def test_rule_has_severity_hold_and_description(ros2, alert):
 def test_rule_file_has_a_stable_id_so_apply_updates_instead_of_duplicating():
     doc = yaml.safe_load(RULES_FILE.read_text())
     assert doc["metadata"]["labels"]["dash0.com/id"] == "robot-fleet-simulator"
+
+
+def test_silent_topic_rule_ignores_event_driven_topics(ros2):
+    # /parameter_events and /rosout only publish when something happens, so
+    # a quiet spell on them is healthy, not a stalled node.
+    expr = ros2["ROS2TopicSilent"]["expr"]
+    for topic in ("parameter_events", "rosout"):
+        assert expr.count(topic) == expr.count("ros2_rmw_publish_total"), \
+            f"every publish selector in ROS2TopicSilent must exclude {topic}"
+    assert 'topic!~' in expr

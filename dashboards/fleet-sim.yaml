@@ -953,7 +953,7 @@
                 "plugin": {
                   "kind": "PrometheusTimeSeriesQuery",
                   "spec": {
-                    "query": "100 * sum(rate({otel_metric_name = \"ros2_rmw_take_total\", otel_metric_type = \"sum\", service_namespace = \"robotics\", $robot_id}[$__range])) / sum(rate({otel_metric_name = \"ros2_rmw_publish_total\", otel_metric_type = \"sum\", service_namespace = \"robotics\", $robot_id}[$__range]))",
+                    "query": "100 * (sum(rate({otel_metric_name = \"ros2_rmw_take_total\", otel_metric_type = \"sum\", service_namespace = \"robotics\", $robot_id}[$__range])) or sum(rate({otel_metric_name = \"ros2_rmw_publish_total\", otel_metric_type = \"sum\", service_namespace = \"robotics\", $robot_id}[$__range])) * 0) / sum(rate({otel_metric_name = \"ros2_rmw_publish_total\", otel_metric_type = \"sum\", service_namespace = \"robotics\", $robot_id}[$__range]))",
                     "seriesNameFormat": ""
                   }
                 }

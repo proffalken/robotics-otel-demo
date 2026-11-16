@@ -40,3 +40,20 @@ def test_killed_nodes_exist_in_the_launch_file(pattern):
     pkg, exe = pattern.split("/")
     launch = (ROOT / "ros2" / "robot.launch.xml").read_text()
     assert f'pkg="{pkg}" exec="{exe}"' in launch
+
+
+def scenario(name: str) -> str:
+    body = SCRIPT.read_text().split(f"  {name})", 1)[1]
+    return body.split(";;", 1)[0]
+
+
+def test_restore_uses_the_configured_fault_scale():
+    # An inline FLEET_FAULT_SCALE=... would override .env.
+    assert "FLEET_FAULT_SCALE" not in scenario("restore")
+
+
+def test_restore_does_not_hide_ros2_restart_failures():
+    restore = scenario("restore")
+    assert "|| true" not in restore and "2>/dev/null" not in restore
+    # ...but skips the restart when ros2-robot is not part of the stack.
+    assert "config --services" in restore
