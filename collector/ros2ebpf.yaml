@@ -1,0 +1,35 @@
+# Optional add-on: scrape ros2ebpfd's Prometheus endpoint and forward the
+# ROS 2 middleware statistics upstream as OTLP metrics.
+#
+# Merged on top of config.yaml with a second --config flag (see
+# docker-compose.ros2.yml). It only adds components and its own pipeline;
+# memory_limiter, batch and otlphttp/upstream come from config.yaml.
+#
+#   ROS2EBPF_ROBOT  robot.id stamped on these metrics (default amr-01, the
+#                   ID of fleet-sim's first robot)
+
+receivers:
+  prometheus/ros2ebpf:
+    config:
+      scrape_configs:
+        - job_name: ros2ebpf
+          scrape_interval: 15s
+          static_configs:
+            - targets: [ros2ebpfd:9477]
+
+processors:
+  resource/ros2ebpf:
+    attributes:
+      - key: service.namespace
+        value: robotics
+        action: upsert
+      - key: robot.id
+        value: ${env:ROS2EBPF_ROBOT:-amr-01}
+        action: upsert
+
+service:
+  pipelines:
+    metrics/ros2ebpf:
+      receivers: [prometheus/ros2ebpf]
+      processors: [memory_limiter, resource/ros2ebpf, batch]
+      exporters: [otlphttp/upstream, debug]

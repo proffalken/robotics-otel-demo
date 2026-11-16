@@ -1,0 +1,47 @@
+# Optional ros2ebpf stack: real ROS 2 Rolling demo nodes plus the ros2ebpf
+# daemon, scraped by the internal collector.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.ros2.yml up -d --build
+#
+# Needs a Linux host with kernel >= 5.8 and BTF (/sys/kernel/btf/vmlinux).
+# The daemon runs privileged in the host pid namespace: that is what loading
+# eBPF uprobes and resolving host pids requires.
+
+services:
+  ros2ebpfd:
+    build:
+      context: https://github.com/fujitatomoya/ros2ebpf.git#c29dd5f5108461a45f168689bc2c17e43d80eefb
+      dockerfile: docker/Dockerfile
+    image: ros2ebpfd:c29dd5f
+    restart: unless-stopped
+    privileged: true
+    pid: host
+    environment:
+      ROS2EBPF_HOST: ${ROS2EBPF_HOST:-amr-01-main}
+      ROS2EBPF_ROBOT: ${ROS2EBPF_ROBOT:-amr-01}
+    volumes:
+      - /sys/fs/bpf:/sys/fs/bpf
+      - /sys/kernel/btf:/sys/kernel/btf:ro
+
+  # The ROS 2 side of robot amr-01: talker/listener on /amr_01/chatter and
+  # the /amr_01/add_two_ints service, all in one container (one robot
+  # computer). Keep it to one container: ros2ebpf counts publishes once per
+  # container mapping the same librmw_implementation.so.
+  ros2-robot:
+    build: ./ros2
+    image: robotics-otel-demo-ros2:local
+    restart: unless-stopped
+    command: ["ros2", "launch", "/robot/robot.launch.xml"]
+    environment:
+      ROS_DOMAIN_ID: "5"
+
+  otel-collector:
+    command:
+      - --config=/etc/otelcol-contrib/config.yaml
+      - --config=/etc/otelcol-contrib/ros2ebpf.yaml
+    volumes:
+      - ./collector/ros2ebpf.yaml:/etc/otelcol-contrib/ros2ebpf.yaml:ro
+    environment:
+      ROS2EBPF_ROBOT: ${ROS2EBPF_ROBOT:-amr-01}
+    depends_on:
+      - ros2ebpfd
